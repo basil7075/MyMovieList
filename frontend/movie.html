@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie — MyMovieList</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav-primary">
+  <span class="nav-logo">MyMovieList</span>
+  <div class="nav-links">
+    <a href="index.html">Browse</a>
+    <a href="watchlist.html">My List</a>
+  </div>
+</nav>
+
+<div class="page-wrap">
+  <a href="javascript:history.back()" class="back-link">← Back</a>
+  <div id="content"><div class="spinner"></div></div>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const tmdbId = parseInt(params.get("id"));
+  let currentMovie = null;
+  let currentRating = 0;
+
+  async function loadMovie() {
+    if (!tmdbId) { location.href = "index.html"; return; }
+    try {
+      const m = await api.getMovie(tmdbId);
+      currentMovie = m;
+      document.title = `${m.title} — MyMovieList`;
+      render(m);
+    } catch (e) {
+      document.getElementById("content").innerHTML = `<p style="color:var(--danger)">${e.message}</p>`;
+    }
+  }
+
+  function render(m) {
+    currentRating = m.rating || 0;
+
+    const poster = m.poster_path
+      ? `<img src="${m.poster_path}" alt="${m.title}" class="detail-poster">`
+      : `<div class="detail-poster-placeholder">🎬</div>`;
+
+    const metaTags = [m.release_year, m.genres, m.runtime ? `${m.runtime} min` : null]
+      .filter(Boolean)
+      .map(t => `<span class="detail-meta-tag">${t}</span>`)
+      .join("");
+
+    const watchlistBtn = m.in_watchlist
+      ? `<button class="btn btn-danger" onclick="removeFromList()">Remove</button>`
+      : `<button class="btn btn-primary" onclick="addToList()">Add to list</button>`;
+
+    const watchedBtn = m.in_watchlist
+      ? m.watched
+        ? `<button class="btn btn-blue" onclick="markWatched(false)">Mark unwatched</button>`
+        : `<button class="btn btn-green" onclick="markWatched(true)">Mark watched</button>`
+      : "";
+
+    const stars = Array.from({length: 10}, (_, i) => {
+      const n = i + 1;
+      return `<span class="star ${n <= currentRating ? "active" : ""}" data-n="${n}" onclick="rateMovie(${n})">★</span>`;
+    }).join("");
+
+    const ratingSection = m.watched ? `
+      <div style="margin-top:1rem">
+        <div class="rating-label">Your score</div>
+        <div class="star-rating" id="stars">${stars}</div>
+      </div>` : "";
+
+    document.getElementById("content").innerHTML = `
+      <div class="detail-hero">
+        <div class="detail-banner">
+          <div>${poster}</div>
+          <div class="detail-info">
+            <h1 class="detail-title">${m.title}</h1>
+            ${m.tagline ? `<div class="detail-tagline">"${m.tagline}"</div>` : ""}
+            <div class="detail-meta">${metaTags}</div>
+            <div class="detail-actions">
+              ${watchlistBtn}
+              ${watchedBtn}
+            </div>
+          </div>
+        </div>
+        <div class="detail-body">
+          <p class="detail-overview">${m.overview || "No description available."}</p>
+          ${ratingSection}
+        </div>
+      </div>`;
+
+    document.querySelectorAll(".star").forEach(s => {
+      s.addEventListener("mouseenter", () => {
+        const n = parseInt(s.dataset.n);
+        document.querySelectorAll(".star").forEach(x => x.classList.toggle("active", parseInt(x.dataset.n) <= n));
+      });
+      s.addEventListener("mouseleave", () => {
+        document.querySelectorAll(".star").forEach(x => x.classList.toggle("active", parseInt(x.dataset.n) <= currentRating));
+      });
+    });
+  }
+
+  async function addToList() {
+    try {
+      await api.addToWatchlist({
+        tmdb_id: currentMovie.tmdb_id, title: currentMovie.title,
+        poster_path: currentMovie.poster_path, release_year: currentMovie.release_year,
+        genres: currentMovie.genres, overview: currentMovie.overview,
+      });
+      showToast("Added to your list", "success");
+      loadMovie();
+    } catch (e) { showToast(e.message, "error"); }
+  }
+
+  async function removeFromList() {
+    try {
+      await api.removeFromWatchlist(tmdbId);
+      showToast("Removed from list");
+      loadMovie();
+    } catch (e) { showToast(e.message, "error"); }
+  }
+
+  async function markWatched(watched) {
+    try {
+      await api.updateItem(tmdbId, { watched });
+      showToast(watched ? "Marked as watched" : "Marked as unwatched", "success");
+      loadMovie();
+    } catch (e) { showToast(e.message, "error"); }
+  }
+
+  async function rateMovie(n) {
+    currentRating = n;
+    try {
+      await api.updateItem(tmdbId, { rating: n });
+      showToast(`Scored ${n}/10`, "success");
+      document.querySelectorAll(".star").forEach(x => x.classList.toggle("active", parseInt(x.dataset.n) <= n));
+    } catch (e) { showToast(e.message, "error"); }
+  }
+
+  loadMovie();
+</script>
+</body>
+</html>

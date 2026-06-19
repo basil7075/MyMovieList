@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My List — MyMovieList</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav-primary">
+  <span class="nav-logo">MyMovieList</span>
+  <div class="nav-links">
+    <a href="index.html">Browse</a>
+    <a href="watchlist.html" class="active">My List</a>
+  </div>
+</nav>
+
+<div class="page-wrap">
+  <div class="page-header">
+    <h1 class="page-title">My List</h1>
+    <button class="btn btn-blue btn-sm" onclick="loadRecs()" id="rec-btn">✨ AI Recommendations</button>
+  </div>
+
+  <div class="wl-tabs">
+    <button class="wl-tab active" onclick="switchTab('watchlist', this)">Plan to Watch</button>
+    <button class="wl-tab" onclick="switchTab('watched', this)">Completed</button>
+  </div>
+
+  <div id="list-content"></div>
+
+  <div id="rec-section" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:1.5rem 0 0.75rem">
+      <span class="section-label" style="margin:0">AI Recommendations</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeRecs()">Close</button>
+    </div>
+    <div id="rec-content"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+<script>
+  let activeTab = "watchlist";
+
+  async function loadList() {
+    const el = document.getElementById("list-content");
+    el.innerHTML = '<div class="spinner"></div>';
+    try {
+      const items = await api.getWatchlist(activeTab === "watched");
+      renderList(items);
+    } catch (e) {
+      el.innerHTML = `<p style="color:var(--danger);padding:1rem">${e.message}</p>`;
+    }
+  }
+
+  function renderList(items) {
+    const el = document.getElementById("list-content");
+    if (!items.length) {
+      const msg = activeTab === "watchlist"
+        ? { icon: "📋", title: "Nothing here yet", sub: "Browse and add movies to your list." }
+        : { icon: "✅", title: "No completed movies yet", sub: "Mark movies as watched from their page." };
+      el.innerHTML = `<div class="empty"><div class="empty-icon">${msg.icon}</div><div class="empty-title">${msg.title}</div><p>${msg.sub}</p></div>`;
+      return;
+    }
+
+    const rows = items.map((m, i) => {
+      const thumb = m.poster_path
+        ? `<img src="${m.poster_path}" class="wl-thumb" alt="${m.title}">`
+        : `<div class="wl-thumb-placeholder">🎬</div>`;
+
+      const rating = m.rating
+        ? `<div class="wl-rating">★ ${m.rating}</div>`
+        : `<div class="wl-rating" style="color:var(--border)">—</div>`;
+
+      const actions = activeTab === "watchlist"
+        ? `<button class="btn btn-green btn-sm" onclick="markWatched(${m.tmdb_id},event)">Watched</button>
+           <button class="btn btn-danger btn-sm" onclick="removeItem(${m.tmdb_id},event)">✕</button>`
+        : `<button class="btn btn-blue btn-sm" onclick="markUnwatched(${m.tmdb_id},event)">Unwatched</button>
+           <button class="btn btn-danger btn-sm" onclick="removeItem(${m.tmdb_id},event)">✕</button>`;
+
+      return `<div class="wl-row" onclick="location.href='movie.html?id=${m.tmdb_id}'">
+        <div class="wl-num">${i + 1}</div>
+        ${thumb}
+        <div class="wl-info">
+          <div class="wl-title">${m.title}</div>
+          <div class="wl-meta">${[m.release_year, m.genres?.split(",")[0]].filter(Boolean).join(" · ")}</div>
+        </div>
+        ${rating}
+        <div class="wl-actions" onclick="event.stopPropagation()">${actions}</div>
+      </div>`;
+    }).join("");
+
+    el.innerHTML = rows;
+  }
+
+  function switchTab(tab, btn) {
+    activeTab = tab;
+    document.querySelectorAll(".wl-tab").forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    loadList();
+  }
+
+  async function markWatched(tmdbId, e) {
+    e.stopPropagation();
+    try { await api.updateItem(tmdbId, { watched: true }); showToast("Marked as watched", "success"); loadList(); }
+    catch (err) { showToast(err.message, "error"); }
+  }
+
+  async function markUnwatched(tmdbId, e) {
+    e.stopPropagation();
+    try { await api.updateItem(tmdbId, { watched: false }); showToast("Moved to plan to watch"); loadList(); }
+    catch (err) { showToast(err.message, "error"); }
+  }
+
+  async function removeItem(tmdbId, e) {
+    e.stopPropagation();
+    try { await api.removeFromWatchlist(tmdbId); showToast("Removed"); loadList(); }
+    catch (err) { showToast(err.message, "error"); }
+  }
+
+  async function loadRecs() {
+    const section = document.getElementById("rec-section");
+    const content = document.getElementById("rec-content");
+    const btn = document.getElementById("rec-btn");
+    section.style.display = "block";
+    content.innerHTML = '<div class="spinner"></div>';
+    btn.disabled = true; btn.textContent = "Loading…";
+    try {
+      const recs = await api.getRecommendations();
+      content.innerHTML = `<div class="rec-grid">${recs.map(r => `
+        <div class="rec-card">
+          <div class="rec-card-title">${r.title}</div>
+          <div class="rec-card-reason">${r.reason}</div>
+          <button class="btn btn-blue btn-sm" style="margin-top:0.5rem;align-self:flex-start"
+            onclick="location.href='index.html?q=${encodeURIComponent(r.title)}'">Find →</button>
+        </div>`).join("")}
+      </div>`;
+    } catch (e) {
+      content.innerHTML = `<div class="empty"><div class="empty-icon">🤖</div><div class="empty-title">${e.message}</div></div>`;
+    } finally {
+      btn.disabled = false; btn.textContent = "✨ AI Recommendations";
+    }
+  }
+
+  function closeRecs() { document.getElementById("rec-section").style.display = "none"; }
+
+  const urlQ = new URLSearchParams(location.search).get("q");
+  if (urlQ) location.href = `index.html?q=${encodeURIComponent(urlQ)}`;
+
+  loadList();
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyMovieList</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav-primary">
+  <span class="nav-logo">MyMovieList</span>
+  <div class="nav-search">
+    <input type="text" id="search-input" placeholder="Search movies…" autocomplete="off">
+    <button onclick="doSearch()">Search</button>
+  </div>
+  <div class="nav-links">
+    <a href="index.html" class="active">Browse</a>
+    <a href="watchlist.html">My List</a>
+  </div>
+</nav>
+
+<div class="page-wrap">
+  <div id="section-label" class="section-label">Trending this week</div>
+  <div id="grid" class="movie-grid"></div>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+<script>
+  const grid = document.getElementById("grid");
+  const input = document.getElementById("search-input");
+
+  async function loadTrending() {
+    grid.innerHTML = '<div class="spinner"></div>';
+    try {
+      const movies = await api.getTrending();
+      renderGrid(movies);
+    } catch (e) {
+      grid.innerHTML = `<p style="color:var(--danger);padding:1rem">${e.message}</p>`;
+    }
+  }
+
+  async function doSearch() {
+    const q = input.value.trim();
+    if (!q) { document.getElementById("section-label").textContent = "Trending this week"; loadTrending(); return; }
+    grid.innerHTML = '<div class="spinner"></div>';
+    document.getElementById("section-label").textContent = `Results for "${q}"`;
+    try {
+      const data = await api.searchMovies(q);
+      renderGrid(data.results);
+    } catch (e) {
+      grid.innerHTML = `<p style="color:var(--danger);padding:1rem">${e.message}</p>`;
+    }
+  }
+
+  function renderGrid(movies) {
+    if (!movies.length) {
+      grid.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">No results found</div><p>Try a different title.</p></div>`;
+      return;
+    }
+    grid.innerHTML = movies.map(m => movieCard(m)).join("");
+  }
+
+  input.addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+
+  const urlQ = new URLSearchParams(location.search).get("q");
+  if (urlQ) { input.value = urlQ; doSearch(); } else { loadTrending(); }
+</script>
+</body>
+</html>
